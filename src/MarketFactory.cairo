@@ -1,89 +1,90 @@
 use starknet::{ContractAddress, ClassHash};
-// after settlement, send to inactive market in storage.
 
 #[derive(Drop, Serde, starknet::Store)]
 pub struct Market {
     name: ByteArray,
-    marketId: u256,
+    market_id: u256,
     description: ByteArray,
     outcomes: (Outcome, Outcome),
     category: felt252,
     image: ByteArray,
-    isSettled: bool,
-    isActive: bool,
+    is_settled: bool,
+    is_active: bool,
     deadline: u256,
-    betToken: ContractAddress,
-    winningOutcome: Option<Outcome>,
-    moneyInPool: u256,
+    bet_token: ContractAddress,
+    winning_outcome: Option<Outcome>,
+    money_in_pool: u256,
 }
 
 #[derive(Drop, Copy, Serde, starknet::Store, PartialEq, Eq, Hash)]
 pub struct Outcome {
     name: felt252,
     // currentOdds: u256,
-    boughtShares: u256,
+    bought_shares: u256,
 }
 
 #[derive(Drop, Serde, starknet::Store)]
-pub struct UserPosition {
+pub struct user_position {
     amount: u256,
-    hasClaimed: bool,
+    has_claimed: bool,
 }
 
 #[starknet::interface]
 pub trait IMarketFactory<TContractState> {
-    fn createMarket(
+    fn create_market(
         ref self: TContractState,
         name: ByteArray,
         description: ByteArray,
         outcomes: (felt252, felt252),
-        betToken: ContractAddress,
+        bet_token: ContractAddress,
         category: felt252,
         image: ByteArray,
         deadline: u256,
     );
 
-    fn getMarketCount(self: @TContractState) -> u256;
+    fn get_market_count(self: @TContractState) -> u256;
 
-    fn buyShares(ref self: TContractState, marketId: u256, tokenToMint: u8, amount: u256) -> bool;
+    fn buy_shares(ref self: TContractState, market_id: u256, token_to_mint: u8, amount: u256) -> bool;
 
-    fn settleMarket(ref self: TContractState, marketId: u256, winningOutcome: u8);
+    fn settle_market(ref self: TContractState, market_id: u256, winning_outcome: u8);
 
-    fn toggleMarketStatus(ref self: TContractState, marketId: u256);
+    fn toggle_market_status(ref self: TContractState, market_id: u256);
 
-    fn claimWinnings(ref self: TContractState, marketId: u256, receiver: ContractAddress);
+    fn claim_winnings(ref self: TContractState, market_id: u256, receiver: ContractAddress);
 
-    fn getMarket(self: @TContractState, marketId: u256) -> Market;
+    fn get_market(self: @TContractState, market_id: u256) -> Market;
 
-    fn getAllMarkets(self: @TContractState) -> Array<Market>;
+    fn get_all_markets(self: @TContractState) -> Array<Market>;
 
-    fn getMarketByCategory(self: @TContractState, category: felt252) -> Array<Market>;
+    fn get_market_by_category(self: @TContractState, category: felt252) -> Array<Market>;
 
-    fn getUserMarkets(self: @TContractState, user: ContractAddress) -> Array<Market>;
+    fn get_user_markets(self: @TContractState, user: ContractAddress) -> Array<Market>;
 
-    fn checkForApproval(self: @TContractState, token: ContractAddress, amount: u256) -> bool;
+    fn check_for_approval(self: @TContractState, token: ContractAddress, amount: u256) -> bool;
 
-    fn getOwner(self: @TContractState) -> ContractAddress;
+    fn get_owner(self: @TContractState) -> ContractAddress;
 
-    fn getTreasuryWallet(self: @TContractState) -> ContractAddress;
+    fn get_treasury_wallet(self: @TContractState) -> ContractAddress;
 
-    fn setTreasuryWallet(ref self: TContractState, wallet: ContractAddress);
+    fn set_treasury_wallet(ref self: TContractState, wallet: ContractAddress);
 
     fn upgrade(ref self: TContractState, new_class_hash: ClassHash);
 
-    fn getOutcomeAndBet(
-        self: @TContractState, user: ContractAddress, marketId: u256
-    ) -> (Outcome, UserPosition);
+    fn get_outcome_and_bet(
+        self: @TContractState, user: ContractAddress, market_id: u256
+    ) -> (Outcome, user_position);
 
-    fn getUserTotalClaimable(self: @TContractState, user: ContractAddress) -> u256;
+    fn get_user_total_claimable(self: @TContractState, user: ContractAddress) -> u256;
 
-    fn hasUserPlacedBet(self: @TContractState, user: ContractAddress, marketId: u256) -> bool;
+    fn has_user_placed_bet(self: @TContractState, user: ContractAddress, market_id: u256) -> bool;
+
+    fn settle_crypto_market(ref self: TContractState, conditions: u8, amount: u256);
 }
 
 pub trait IMarketFactoryImpl<TContractState> {
-    fn isMarketResolved(self: @TContractState, marketId: u256) -> bool;
+    fn is_market_resolved(self: @TContractState, market_id: u256) -> bool;
 
-    fn calcProbabilty(self: @TContractState, marketId: u256, outcome: Outcome) -> u256;
+    fn calc_probabilty(self: @TContractState, market_id: u256, outcome: Outcome) -> u256;
 }
 
 #[starknet::contract]
@@ -93,7 +94,7 @@ pub mod MarketFactory {
     use core::box::BoxTrait;
     use core::option::OptionTrait;
     use core::array::ArrayTrait;
-    use super::{Market, Outcome, UserPosition};
+    use super::{Market, Outcome, user_position};
     use starknet::{ContractAddress, ClassHash, get_caller_address, get_contract_address};
     use core::num::traits::zero::Zero;
     use openzeppelin::token::erc20::interface::IERC20Dispatcher;
@@ -104,15 +105,16 @@ pub mod MarketFactory {
     const PLATFORM_FEE: u256 = 2;
     #[storage]
     struct Storage {
-        userBet: LegacyMap::<(ContractAddress, u256), Outcome>,
+        user_bet: LegacyMap::<(ContractAddress, u256), Outcome>,
         // markets: Array<Market>
         markets: LegacyMap::<u256, Market>,
         idx: u256,
-        userPortfolio: LegacyMap::<
-            (ContractAddress, Outcome), UserPosition
+        user_portfolio: LegacyMap::<
+            (ContractAddress, Outcome), user_position
         >, // read outcome with market id and user name, then read portfolio using contract address and outcome.
         owner: ContractAddress,
-        treasuryWallet: ContractAddress,
+        treasury_wallet: ContractAddress,
+        admins: Array<ContractAddress>,
     }
 
 
@@ -163,10 +165,10 @@ pub mod MarketFactory {
     }
 
 
-    fn createShareTokens(names: (felt252, felt252)) -> (Outcome, Outcome) {
+    fn create_share_tokens(names: (felt252, felt252)) -> (Outcome, Outcome) {
         let (name1, name2) = names;
-        let mut token1 = Outcome { name: name1, boughtShares: 0 };
-        let mut token2 = Outcome { name: name2, boughtShares: 0 };
+        let mut token1 = Outcome { name: name1, bought_shares: 0 };
+        let mut token2 = Outcome { name: name2, bought_shares: 0 };
 
         let tokens = (token1, token2);
 
@@ -175,69 +177,69 @@ pub mod MarketFactory {
 
     #[abi(embed_v0)]
     impl MarketFactory of super::IMarketFactory<ContractState> {
-        fn createMarket(
+        fn create_market(
             ref self: ContractState,
             name: ByteArray,
             description: ByteArray,
             outcomes: (felt252, felt252),
-            betToken: ContractAddress,
+            bet_token: ContractAddress,
             category: felt252,
             image: ByteArray,
             deadline: u256,
         ) {
             // the entire money stays in the contract, treasury keeps count of how much the platform is making as revenue, the rest amount in the market 
             assert(get_caller_address() == self.owner.read(), 'Only owner can create.');
-            let outcomes = createShareTokens(outcomes);
+            let outcomes = create_share_tokens(outcomes);
             let market = Market {
                 name,
                 description,
                 outcomes,
-                isSettled: false,
-                isActive: true,
-                winningOutcome: Option::None,
-                betToken: betToken,
-                moneyInPool: 0,
+                is_settled: false,
+                is_active: true,
+                winning_outcome: Option::None,
+                bet_token: bet_token,
+                money_in_pool: 0,
                 category,
                 image,
                 deadline,
-                marketId: self.idx.read() + 1,
+                market_id: self.idx.read() + 1,
             };
             self.idx.write(self.idx.read() + 1); // 0 -> 1
             self.markets.write(self.idx.read(), market); // write market to storage
-            let currentMarket = self.markets.read(self.idx.read());
-            self.emit(MarketCreated { market: currentMarket });
+            let current_market = self.markets.read(self.idx.read());
+            self.emit(MarketCreated { market: current_market });
         }
-        fn getMarket(self: @ContractState, marketId: u256) -> Market {
-            return self.markets.read(marketId);
+        fn get_market(self: @ContractState, market_id: u256) -> Market {
+            return self.markets.read(market_id);
         }
 
-        fn getMarketCount(self: @ContractState) -> u256 {
+        fn get_market_count(self: @ContractState) -> u256 {
             return self.idx.read();
         }
 
-        fn toggleMarketStatus(ref self: ContractState, marketId: u256) {
-            let mut market = self.markets.read(marketId);
-            market.isActive = !market.isActive;
-            self.markets.write(marketId, market);
-            let currentMarket = self.markets.read(marketId);
-            self.emit(MarketToggled { market: currentMarket });
+        fn toggle_market_status(ref self: ContractState, market_id: u256) {
+            let mut market = self.markets.read(market_id);
+            market.is_active = !market.is_active;
+            self.markets.write(market_id, market);
+            let current_market = self.markets.read(market_id);
+            self.emit(MarketToggled { market: current_market });
         }
 
-        fn hasUserPlacedBet(self: @ContractState, user: ContractAddress, marketId: u256) -> bool {
-            let outcome = self.userBet.read((user, marketId));
-            return !outcome.boughtShares.is_zero();
+        fn has_user_placed_bet(self: @ContractState, user: ContractAddress, market_id: u256) -> bool {
+            let outcome = self.user_bet.read((user, market_id));
+            return !outcome.bought_shares.is_zero();
         }
 
-        fn checkForApproval(self: @ContractState, token: ContractAddress, amount: u256) -> bool {
+        fn check_for_approval(self: @ContractState, token: ContractAddress, amount: u256) -> bool {
             let dispatcher = IERC20Dispatcher { contract_address: token };
             let approval = dispatcher.allowance(get_caller_address(), get_contract_address());
             return approval >= amount;
         }
 
-        fn getUserMarkets(self: @ContractState, user: ContractAddress) -> Array<Market> {
+        fn get_user_markets(self: @ContractState, user: ContractAddress) -> Array<Market> {
             let mut markets: Array<Market> = ArrayTrait::new();
             let mut outcomes: Array<Outcome> = ArrayTrait::new();
-            let mut bets: Array<UserPosition> = ArrayTrait::new();
+            let mut bets: Array<user_position> = ArrayTrait::new();
             let mut i: u256 = 1;
             loop {
                 if i > self.idx.read() {
@@ -245,26 +247,30 @@ pub mod MarketFactory {
                 }
                 let market = self.markets.read(i);
                 let (outcome1, outcome2) = market.outcomes;
-                let userOutcome = self.userBet.read((user, i));
-                if userOutcome == outcome1 || userOutcome == outcome2 {
+                let user_outcome = self.user_bet.read((user, i));
+                if user_outcome == outcome1 || user_outcome == outcome2 {
                     markets.append(market);
-                    outcomes.append(userOutcome);
-                    bets.append(self.userPortfolio.read((user, userOutcome)));
+                    outcomes.append(user_outcome);
+                    bets.append(self.user_portfolio.read((user, user_outcome)));
                 }
                 i += 1;
             };
             markets
         }
 
-        fn getOutcomeAndBet(
-            self: @ContractState, user: ContractAddress, marketId: u256
-        ) -> (Outcome, UserPosition) {
-            let outcome = self.userBet.read((user, marketId));
-            let bet = self.userPortfolio.read((user, outcome));
+        fn settle_crypto_market(ref self: TContractState, conditions: u8, amount: u256) {
+            assert(get_caller_address() == self.owner.read(), 'Only owner can settle markets.');
+        }
+
+        fn get_outcome_and_bet(
+            self: @ContractState, user: ContractAddress, market_id: u256
+        ) -> (Outcome, user_position) {
+            let outcome = self.user_bet.read((user, market_id));
+            let bet = self.user_portfolio.read((user, outcome));
             return (outcome, bet);
         }
 
-        fn getUserTotalClaimable(self: @ContractState, user: ContractAddress) -> u256 {
+        fn get_user_total_claimable(self: @ContractState, user: ContractAddress) -> u256 {
             let mut total: u256 = 0;
             let mut i: u256 = 1;
             loop {
@@ -272,17 +278,17 @@ pub mod MarketFactory {
                     break;
                 }
                 let market = self.markets.read(i);
-                let userOutcome = self.userBet.read((user, i));
-                if market.isSettled == false {
+                let user_outcome = self.user_bet.read((user, i));
+                if market.is_settled == false {
                     i += 1;
                     continue;
                 }
-                if userOutcome == market.winningOutcome.unwrap() {
-                    let userPosition = self.userPortfolio.read((user, userOutcome));
-                    if userPosition.hasClaimed == false {
-                        total += userPosition.amount
-                            * market.moneyInPool
-                            / userOutcome.boughtShares;
+                if user_outcome == market.winning_outcome.unwrap() {
+                    let user_position = self.user_portfolio.read((user, user_outcome));
+                    if user_position.has_claimed == false {
+                        total += user_position.amount
+                            * market.money_in_pool
+                            / user_outcome.bought_shares;
                     }
                 }
                 i += 1;
@@ -291,41 +297,41 @@ pub mod MarketFactory {
         }
 
         // creates a position in a market for a user
-        fn buyShares(
-            ref self: ContractState, marketId: u256, tokenToMint: u8, amount: u256
+        fn buy_shares(
+            ref self: ContractState, market_id: u256, token_to_mint: u8, amount: u256
         ) -> bool {
-            let market = self.markets.read(marketId);
-            assert(market.isActive == true, 'Market is not active.');
-            let token = self.userBet.read((get_caller_address(), marketId));
+            let market = self.markets.read(market_id);
+            assert(market.is_active == true, 'Market is not active.');
+            let token = self.user_bet.read((get_caller_address(), market_id));
             let (outcome1, outcome2) = market.outcomes;
-            assert(token.boughtShares.is_zero(), 'User already has shares');
-            let dispatcher = IERC20Dispatcher { contract_address: market.betToken };
-            if tokenToMint == 0 {
+            assert(token.bought_shares.is_zero(), 'User already has shares');
+            let dispatcher = IERC20Dispatcher { contract_address: market.bet_token };
+            if token_to_mint == 0 {
                 let mut outcome = outcome1;
                 let txn: bool = dispatcher
                     .transfer_from(get_caller_address(), get_contract_address(), amount);
-                dispatcher.transfer(self.treasuryWallet.read(), amount * PLATFORM_FEE / 100);
-                outcome.boughtShares = outcome.boughtShares
+                dispatcher.transfer(self.treasury_wallet.read(), amount * PLATFORM_FEE / 100);
+                outcome.bought_shares = outcome.bought_shares
                     + (amount - amount * PLATFORM_FEE / 100);
-                let marketClone = self.markets.read(marketId);
-                let moneyInPool = marketClone.moneyInPool + amount - amount * PLATFORM_FEE / 100;
-                let newMarket = Market {
-                    outcomes: (outcome, outcome2), moneyInPool: moneyInPool, ..marketClone
+                let market_clone = self.markets.read(market_id);
+                let money_in_pool = market_clone.money_in_pool + amount - amount * PLATFORM_FEE / 100;
+                let new_market = Market {
+                    outcomes: (outcome, outcome2), money_in_pool: money_in_pool, ..market_clone
                 };
-                self.markets.write(marketId, newMarket);
-                self.userBet.write((get_caller_address(), marketId), outcome);
+                self.markets.write(market_id, new_market);
+                self.user_bet.write((get_caller_address(), market_id), outcome);
                 self
-                    .userPortfolio
+                    .user_portfolio
                     .write(
                         (get_caller_address(), outcome),
-                        UserPosition { amount: amount, hasClaimed: false }
+                        user_position { amount: amount, has_claimed: false }
                     );
-                let updatedMarket = self.markets.read(marketId);
+                let updated_market = self.markets.read(market_id);
                 self
                     .emit(
                         ShareBought {
                             user: get_caller_address(),
-                            market: updatedMarket,
+                            market: updated_market,
                             outcome: outcome,
                             amount: amount
                         }
@@ -335,28 +341,28 @@ pub mod MarketFactory {
                 let mut outcome = outcome2;
                 let txn: bool = dispatcher
                     .transfer_from(get_caller_address(), get_contract_address(), amount);
-                dispatcher.transfer(self.treasuryWallet.read(), amount * PLATFORM_FEE / 100);
-                outcome.boughtShares = outcome.boughtShares
+                dispatcher.transfer(self.treasury_wallet.read(), amount * PLATFORM_FEE / 100);
+                outcome.bought_shares = outcome.bought_shares
                     + (amount - amount * PLATFORM_FEE / 100);
-                let marketClone = self.markets.read(marketId);
-                let moneyInPool = marketClone.moneyInPool + amount - amount * PLATFORM_FEE / 100;
+                let market_clone = self.markets.read(market_id);
+                let money_in_pool = market_clone.money_in_pool + amount - amount * PLATFORM_FEE / 100;
                 let marketNew = Market {
-                    outcomes: (outcome1, outcome), moneyInPool: moneyInPool, ..marketClone
+                    outcomes: (outcome1, outcome), money_in_pool: money_in_pool, ..market_clone
                 };
-                self.markets.write(marketId, marketNew);
-                self.userBet.write((get_caller_address(), marketId), outcome);
+                self.markets.write(market_id, marketNew);
+                self.user_bet.write((get_caller_address(), market_id), outcome);
                 self
-                    .userPortfolio
+                    .user_portfolio
                     .write(
                         (get_caller_address(), outcome),
-                        UserPosition { amount: amount, hasClaimed: false }
+                        user_position { amount: amount, has_claimed: false }
                     );
-                let updatedMarket = self.markets.read(marketId);
+                let updated_market = self.markets.read(market_id);
                 self
                     .emit(
                         ShareBought {
                             user: get_caller_address(),
-                            market: updatedMarket,
+                            market: updated_market,
                             outcome: outcome,
                             amount: amount
                         }
@@ -365,67 +371,67 @@ pub mod MarketFactory {
             }
         }
 
-        fn getTreasuryWallet(self: @ContractState) -> ContractAddress {
+        fn get_treasury_wallet(self: @ContractState) -> ContractAddress {
             assert(get_caller_address() == self.owner.read(), 'Only owner can read.');
-            return self.treasuryWallet.read();
+            return self.treasury_wallet.read();
         }
 
-        fn claimWinnings(ref self: ContractState, marketId: u256, receiver: ContractAddress) {
-            assert(marketId <= self.idx.read(), 'Market does not exist');
-            let market = self.markets.read(marketId);
-            assert(market.isSettled == true, 'Market not settled');
-            let userOutcome: Outcome = self.userBet.read((receiver, marketId));
-            let userPosition: UserPosition = self.userPortfolio.read((receiver, userOutcome));
-            assert(userPosition.hasClaimed == false, 'User has claimed winnings.');
+        fn claim_winnings(ref self: ContractState, market_id: u256, receiver: ContractAddress) {
+            assert(market_id <= self.idx.read(), 'Market does not exist');
+            let market = self.markets.read(market_id);
+            assert(market.is_settled == true, 'Market not settled');
+            let user_outcome: Outcome = self.user_bet.read((receiver, market_id));
+            let user_position: user_position = self.user_portfolio.read((receiver, user_outcome));
+            assert(user_position.has_claimed == false, 'User has claimed winnings.');
             let mut winnings = 0;
-            let winningOutcome = market.winningOutcome.unwrap();
-            assert(userOutcome == winningOutcome, 'User did not win!');
-            winnings = userPosition.amount * market.moneyInPool / userOutcome.boughtShares;
-            let dispatcher = IERC20Dispatcher { contract_address: market.betToken };
+            let winning_outcome = market.winning_outcome.unwrap();
+            assert(user_outcome == winning_outcome, 'User did not win!');
+            winnings = user_position.amount * market.money_in_pool / user_outcome.bought_shares;
+            let dispatcher = IERC20Dispatcher { contract_address: market.bet_token };
             dispatcher.transfer(receiver, winnings);
             self
-                .userPortfolio
+                .user_portfolio
                 .write(
-                    (receiver, userOutcome),
-                    UserPosition { amount: userPosition.amount, hasClaimed: true }
+                    (receiver, user_outcome),
+                    user_position { amount: user_position.amount, has_claimed: true }
                 );
             self
                 .emit(
                     WinningsClaimed {
-                        user: receiver, market: market, outcome: userOutcome, amount: winnings
+                        user: receiver, market: market, outcome: user_outcome, amount: winnings
                     }
                 );
         }
 
-        fn setTreasuryWallet(ref self: ContractState, wallet: ContractAddress) {
+        fn settreasury_wallet(ref self: ContractState, wallet: ContractAddress) {
             assert(get_caller_address() == self.owner.read(), 'Only owner can set.');
-            self.treasuryWallet.write(wallet);
+            self.treasury_wallet.write(wallet);
         }
 
-        fn settleMarket(ref self: ContractState, marketId: u256, winningOutcome: u8) {
+        fn settle_market(ref self: ContractState, market_id: u256, winning_outcome: u8) {
             assert(get_caller_address() == self.owner.read(), 'Only owner can settle markets.');
-            let mut market = self.markets.read(marketId);
-            market.isSettled = true;
-            market.isActive = false;
+            let mut market = self.markets.read(market_id);
+            market.is_settled = true;
+            market.is_active = false;
             let (outcome1, outcome2) = market.outcomes;
-            if winningOutcome == 0 {
-                market.winningOutcome = Option::Some(outcome1);
+            if winning_outcome == 0 {
+                market.winning_outcome = Option::Some(outcome1);
             } else {
-                market.winningOutcome = Option::Some(outcome2);
+                market.winning_outcome = Option::Some(outcome2);
             }
-            self.markets.write(marketId, market);
-            let currentMarket = self.markets.read(marketId);
-            self.emit(MarketSettled { market: currentMarket });
+            self.markets.write(market_id, market);
+            let current_market = self.markets.read(market_id);
+            self.emit(MarketSettled { market: current_market });
         }
 
-        fn getAllMarkets(self: @ContractState) -> Array<Market> {
+        fn get_all_markets(self: @ContractState) -> Array<Market> {
             let mut markets: Array<Market> = ArrayTrait::new();
             let mut i: u256 = 1;
             loop {
                 if i > self.idx.read() {
                     break;
                 }
-                if self.markets.read(i).isActive == true {
+                if self.markets.read(i).is_active == true {
                     markets.append(self.markets.read(i));
                 }
                 i += 1;
@@ -433,11 +439,11 @@ pub mod MarketFactory {
             markets
         }
 
-        fn getOwner(self: @ContractState) -> ContractAddress {
+        fn get_owner(self: @ContractState) -> ContractAddress {
             return self.owner.read();
         }
 
-        fn getMarketByCategory(self: @ContractState, category: felt252) -> Array<Market> {
+        fn get_market_by_category(self: @ContractState, category: felt252) -> Array<Market> {
             let mut markets: Array<Market> = ArrayTrait::new();
             let mut i: u256 = 0;
             loop {
@@ -462,33 +468,17 @@ pub mod MarketFactory {
 
 
     impl MarketFactoryImpl of super::IMarketFactoryImpl<ContractState> {
-        fn isMarketResolved(self: @ContractState, marketId: u256) -> bool {
-            let market = self.markets.read(marketId);
-            return market.isSettled;
+        fn is_market_resolved(self: @ContractState, market_id: u256) -> bool {
+            let market = self.markets.read(market_id);
+            return market.is_settled;
         }
 
-        fn calcProbabilty(self: @ContractState, marketId: u256, outcome: Outcome) -> u256 {
-            let market = self.markets.read(marketId);
+        fn calc_probabilty(self: @ContractState, market_id: u256, outcome: Outcome) -> u256 {
+            let market = self.markets.read(market_id);
             let (outcome1, outcome2) = market.outcomes;
-            let totalShares = outcome1.boughtShares + outcome2.boughtShares;
-            let outcomeShares = outcome.boughtShares;
-            return outcomeShares / totalShares;
+            let total_shares = outcome1.bought_shares + outcome2.bought_shares;
+            let outcome_shares = outcome.bought_shares;
+            return outcome_shares / total_shares;
         }
-    // fn calcOdds(ref self: ContractState, marketId: u256) -> Array<u256> {
-    //     let market = self.markets.read(marketId);
-    //     let (outcome1, outcome2) = market.outcomes;
-    //     let mut odds: Array<u256> = ArrayTrait::new();
-    //     if (outcome1.boughtShares == 0) {
-
-    //     }
-    //     let oddOutcome1 = (outcome1.boughtShares + outcome2.boughtShares)
-    //         / outcome1.boughtShares;
-    //     let oddOutcome2 = (outcome1.boughtShares + outcome2.boughtShares)
-    //         / outcome2.boughtShares;
-    //     odds.append(oddOutcome1);
-    //     odds.append(oddOutcome2);
-    //     odds
-    // // }
-    // }
     }
 }
