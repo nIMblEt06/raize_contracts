@@ -915,10 +915,10 @@ pub mod MarketFactory {
                 winnings = user_bet.position.amount
                     * market.money_in_pool
                     / user_bet.outcome.bought_shares;
-                let eth_address = contract_address_const::<
-                    0x053b40a647cedfca6ca84f542a0fe36736031905a9639a7f19a3c1e66bfd5080
+                let usdc_address = contract_address_const::<
+                0x02f37c3e00e75ee4135b32bb60c37e0599af264076376a618f138d2f9929ac74
                 >();
-                let dispatcher = IERC20Dispatcher { contract_address: eth_address };
+                let dispatcher = IERC20Dispatcher { contract_address: usdc_address };
                 dispatcher.transfer(get_caller_address(), winnings);
                 self
                     .user_bet
@@ -954,10 +954,10 @@ pub mod MarketFactory {
                 winnings = user_bet.position.amount
                     * market.money_in_pool
                     / user_bet.outcome.bought_shares;
-                let eth_address = contract_address_const::<
-                    0x053b40a647cedfca6ca84f542a0fe36736031905a9639a7f19a3c1e66bfd5080
+                let usdc_address = contract_address_const::<
+                0x02f37c3e00e75ee4135b32bb60c37e0599af264076376a618f138d2f9929ac74
                 >();
-                let dispatcher = IERC20Dispatcher { contract_address: eth_address };
+                let dispatcher = IERC20Dispatcher { contract_address: usdc_address };
                 dispatcher.transfer(get_caller_address(), winnings);
                 self
                     .user_bet
@@ -993,10 +993,10 @@ pub mod MarketFactory {
                 winnings = user_bet.position.amount
                     * market.money_in_pool
                     / user_bet.outcome.bought_shares;
-                let eth_address = contract_address_const::<
-                    0x053b40a647cedfca6ca84f542a0fe36736031905a9639a7f19a3c1e66bfd5080
+                let usdc_address = contract_address_const::<
+                0x02f37c3e00e75ee4135b32bb60c37e0599af264076376a618f138d2f9929ac74
                 >();
-                let dispatcher = IERC20Dispatcher { contract_address: eth_address };
+                let dispatcher = IERC20Dispatcher { contract_address: usdc_address };
                 dispatcher.transfer(get_caller_address(), winnings);
                 self
                     .user_bet
@@ -1027,7 +1027,16 @@ pub mod MarketFactory {
         }
 
         fn settle_market(ref self: ContractState, market_id: u256, winning_outcome: u8) {
-            assert(get_caller_address() == self.owner.read(), 'Only owner can settle markets.');
+            let mut i = 1;
+            loop {
+                if i > self.num_admins.read() {
+                    panic!("Only admins can create markets.");
+                }
+                if self.admins.read(i) == get_caller_address() {
+                    break;
+                }
+                i += 1;
+            };
             assert(market_id <= self.idx.read(), 'Market does not exist');
             let mut market = self.markets.read(market_id);
             market.is_settled = true;
@@ -1044,7 +1053,16 @@ pub mod MarketFactory {
         }
 
         fn settle_crypto_market_manually(ref self: ContractState, market_id: u256, winning_outcome: u8) {
-            assert(get_caller_address() == self.owner.read(), 'Only owner can settle markets.');
+            let mut i = 1;
+            loop {
+                if i > self.num_admins.read() {
+                    panic!("Only admins can create markets.");
+                }
+                if self.admins.read(i) == get_caller_address() {
+                    break;
+                }
+                i += 1;
+            };
             assert(market_id <= self.crypto_idx.read(), 'Market does not exist');
             let mut market = self.crypto_markets.read(market_id);
             market.is_settled = true;
@@ -1061,7 +1079,16 @@ pub mod MarketFactory {
         }
 
         fn settle_sports_market_manually(ref self: ContractState, market_id: u256, winning_outcome: u8) {
-            assert(get_caller_address() == self.owner.read(), 'Only owner can settle markets.');
+            let mut i = 1;
+            loop {
+                if i > self.num_admins.read() {
+                    panic!("Only admins can create markets.");
+                }
+                if self.admins.read(i) == get_caller_address() {
+                    break;
+                }
+                i += 1;
+            };
             assert(market_id <= self.sports_idx.read(), 'Market does not exist');
             let mut market = self.sports_markets.read(market_id);
             market.is_settled = true;
