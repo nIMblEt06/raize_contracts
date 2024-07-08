@@ -115,6 +115,10 @@ pub trait IMarketFactory<TContractState> {
 
     fn settle_market(ref self: TContractState, market_id: u256, winning_outcome: u8);
 
+    fn settle_crypto_market_manually(ref self: TContractState, market_id: u256, winning_outcome: u8);
+
+    fn settle_sports_market_manually(ref self: TContractState, market_id: u256, winning_outcome: u8);
+
     fn toggle_market_status(ref self: TContractState, market_id: u256, market_type: u8);
 
     fn claim_winnings(ref self: TContractState, market_id: u256, market_type: u8);
@@ -151,6 +155,8 @@ pub trait IMarketFactory<TContractState> {
 
     fn get_user_total_claimable(self: @TContractState, user: ContractAddress) -> u256;
 
+    fn disable_market(ref self: TContractState, market_id: u256, market_type: u8);
+
     fn has_user_placed_bet(
         self: @TContractState, user: ContractAddress, market_id: u256, market_type: u8
     ) -> bool;
@@ -164,12 +170,6 @@ pub trait IMarketFactory<TContractState> {
     fn get_user_crypto_markets(self: @TContractState, user: ContractAddress) -> Array<CryptoMarket>;
 
     fn get_user_sports_markets(self: @TContractState, user: ContractAddress) -> Array<SportsMarket>;
-}
-
-pub trait IMarketFactoryImpl<TContractState> {
-    fn is_market_resolved(self: @TContractState, market_id: u256) -> bool;
-
-    fn calc_probabilty(self: @TContractState, market_id: u256, outcome: Outcome) -> u256;
 }
 
 #[starknet::contract]
@@ -216,8 +216,12 @@ pub mod MarketFactory {
         SportsShareBought: SportsShareBought,
         CryptoShareBought: CryptoShareBought,
         MarketSettled: MarketSettled,
+        SportsMarketSettled: SportsMarketSettled,
+        CryptoMarketSettled: CryptoMarketSettled,
         MarketToggled: MarketToggled,
         WinningsClaimed: WinningsClaimed,
+        SportsWinningsClaimed: SportsWinningsClaimed,
+        CryptoWinningsClaimed: CryptoWinningsClaimed,
         Upgraded: Upgraded,
         SportsMarketCreated: SportsMarketCreated,
         SportsMarketToggled: SportsMarketToggled,
@@ -239,6 +243,16 @@ pub mod MarketFactory {
 
     #[derive(Drop, starknet::Event)]
     struct SportsMarketCreated {
+        market: SportsMarket
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct CryptoMarketSettled {
+        market: CryptoMarket
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct SportsMarketSettled {
         market: SportsMarket
     }
 
@@ -267,6 +281,7 @@ pub mod MarketFactory {
     struct MarketSettled {
         market: Market
     }
+
     #[derive(Drop, starknet::Event)]
     struct MarketToggled {
         market: Market
@@ -283,6 +298,20 @@ pub mod MarketFactory {
     struct WinningsClaimed {
         user: ContractAddress,
         market: Market,
+        outcome: Outcome,
+        amount: u256
+    }
+    #[derive(Drop, starknet::Event)]
+    struct SportsWinningsClaimed {
+        user: ContractAddress,
+        market: SportsMarket,
+        outcome: Outcome,
+        amount: u256
+    }
+    #[derive(Drop, starknet::Event)]
+    struct CryptoWinningsClaimed {
+        user: ContractAddress,
+        market: CryptoMarket,
         outcome: Outcome,
         amount: u256
     }
@@ -453,8 +482,8 @@ pub mod MarketFactory {
                 sports_market.winning_outcome = Option::Some(outcome2);
             }
             self.sports_markets.write(market_id, sports_market);
-            let current_market = self.markets.read(market_id);
-            self.emit(MarketSettled { market: current_market });
+            let current_market = self.sports_markets.read(market_id);
+            self.emit(SportsMarketSettled { market: current_market });
         }
 
         fn get_crypto_market(self: @ContractState, market_id: u256) -> CryptoMarket {
@@ -599,8 +628,31 @@ pub mod MarketFactory {
                 }
             }
             self.crypto_markets.write(market_id, crypto_market);
-            let current_market = self.markets.read(market_id);
-            self.emit(MarketSettled { market: current_market });
+            let current_market = self.crypto_markets.read(market_id);
+            self.emit(CryptoMarketSettled { market: current_market });
+        }
+
+        fn disable_market(ref self: ContractState, market_id: u256, market_type: u8) {
+            assert(get_caller_address() == self.owner.read(), 'Only owner can disable markets.');
+            if market_type == 0 {
+                let mut market = self.sports_markets.read(market_id);
+                market.is_active = false;
+                self.sports_markets.write(market_id, market);
+                let current_market = self.sports_markets.read(market_id);
+                self.emit(SportsMarketToggled { market: current_market });
+            } else if market_type == 1 {
+                let mut market = self.crypto_markets.read(market_id);
+                market.is_active = false;
+                self.crypto_markets.write(market_id, market);
+                let current_market = self.crypto_markets.read(market_id);
+                self.emit(CryptoMarketToggled { market: current_market });
+            } else {
+                let mut market = self.markets.read(market_id);
+                market.is_active = false;
+                self.markets.write(market_id, market);
+                let current_market = self.markets.read(market_id);
+                self.emit(MarketToggled { market: current_market });
+            }
         }
 
         fn get_outcome_and_bet(
@@ -656,10 +708,10 @@ pub mod MarketFactory {
             amount: u256,
             market_type: u8
         ) -> bool {
-            let eth_address = contract_address_const::<
-                0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7
+            let usdc_address = contract_address_const::<
+                0x02f37c3e00e75ee4135b32bb60c37e0599af264076376a618f138d2f9929ac74
             >();
-            let dispatcher = IERC20Dispatcher { contract_address: eth_address };
+            let dispatcher = IERC20Dispatcher { contract_address: usdc_address };
 
             match market_type {
                 0 => {
@@ -760,7 +812,7 @@ pub mod MarketFactory {
                                 position: UserPosition { amount: amount, has_claimed: false }
                             }
                         );
-                        let new_market = self.crypto_markets.read(market_id);
+                    let new_market = self.crypto_markets.read(market_id);
                     self
                         .emit(
                             CryptoShareBought {
@@ -849,42 +901,124 @@ pub mod MarketFactory {
         }
 
         fn claim_winnings(ref self: ContractState, market_id: u256, market_type: u8) {
-            assert(market_id <= self.idx.read(), 'Market does not exist');
-            let market = self.markets.read(market_id);
-            assert(market.is_settled == true, 'Market not settled');
-            let user_bet: UserBet = self.user_bet.read((get_caller_address(), market_id, market_type));
-            assert(user_bet.position.has_claimed == false, 'User has claimed winnings.');
-            let mut winnings = 0;
-            let winning_outcome = market.winning_outcome.unwrap();
-            assert(user_bet.outcome == winning_outcome, 'User did not win!');
-            winnings = user_bet.position.amount
-                * market.money_in_pool
-                / user_bet.outcome.bought_shares;
-            let eth_address = contract_address_const::<
-                0x053b40a647cedfca6ca84f542a0fe36736031905a9639a7f19a3c1e66bfd5080
-            >();
-            let dispatcher = IERC20Dispatcher { contract_address: eth_address };
-            dispatcher.transfer(get_caller_address(), winnings);
-            self
-                .user_bet
-                .write(
-                    (get_caller_address(), market_id, market_type),
-                    UserBet {
-                        outcome: user_bet.outcome,
-                        position: UserPosition {
-                            amount: user_bet.position.amount, has_claimed: true
+            if (market_type == 0) {
+                assert(market_id <= self.sports_idx.read(), 'Market does not exist');
+                let market = self.sports_markets.read(market_id);
+                assert(market.is_settled == true, 'Market not settled');
+                let user_bet: UserBet = self
+                    .user_bet
+                    .read((get_caller_address(), market_id, market_type));
+                assert(user_bet.position.has_claimed == false, 'User has claimed winnings.');
+                let mut winnings = 0;
+                let winning_outcome = market.winning_outcome.unwrap();
+                assert(user_bet.outcome == winning_outcome, 'User did not win!');
+                winnings = user_bet.position.amount
+                    * market.money_in_pool
+                    / user_bet.outcome.bought_shares;
+                let eth_address = contract_address_const::<
+                    0x053b40a647cedfca6ca84f542a0fe36736031905a9639a7f19a3c1e66bfd5080
+                >();
+                let dispatcher = IERC20Dispatcher { contract_address: eth_address };
+                dispatcher.transfer(get_caller_address(), winnings);
+                self
+                    .user_bet
+                    .write(
+                        (get_caller_address(), market_id, market_type),
+                        UserBet {
+                            outcome: user_bet.outcome,
+                            position: UserPosition {
+                                amount: user_bet.position.amount, has_claimed: true
+                            }
                         }
-                    }
-                );
-            self
-                .emit(
-                    WinningsClaimed {
-                        user: get_caller_address(),
-                        market: market,
-                        outcome: user_bet.outcome,
-                        amount: winnings
-                    }
-                );
+                    );
+                self
+                    .emit(
+                        SportsWinningsClaimed {
+                            user: get_caller_address(),
+                            market: market,
+                            outcome: user_bet.outcome,
+                            amount: winnings
+                        }
+                    );
+            } else if (market_type == 1) {
+                assert(market_id <= self.crypto_idx.read(), 'Market does not exist');
+                let market = self.crypto_markets.read(market_id);
+                assert(market.is_settled == true, 'Market not settled');
+                let user_bet: UserBet = self
+                    .user_bet
+                    .read((get_caller_address(), market_id, market_type));
+                assert(user_bet.position.has_claimed == false, 'User has claimed winnings.');
+                let mut winnings = 0;
+                let winning_outcome = market.winning_outcome.unwrap();
+                assert(user_bet.outcome == winning_outcome, 'User did not win!');
+                winnings = user_bet.position.amount
+                    * market.money_in_pool
+                    / user_bet.outcome.bought_shares;
+                let eth_address = contract_address_const::<
+                    0x053b40a647cedfca6ca84f542a0fe36736031905a9639a7f19a3c1e66bfd5080
+                >();
+                let dispatcher = IERC20Dispatcher { contract_address: eth_address };
+                dispatcher.transfer(get_caller_address(), winnings);
+                self
+                    .user_bet
+                    .write(
+                        (get_caller_address(), market_id, market_type),
+                        UserBet {
+                            outcome: user_bet.outcome,
+                            position: UserPosition {
+                                amount: user_bet.position.amount, has_claimed: true
+                            }
+                        }
+                    );
+                self
+                    .emit(
+                        CryptoWinningsClaimed {
+                            user: get_caller_address(),
+                            market: market,
+                            outcome: user_bet.outcome,
+                            amount: winnings
+                        }
+                    );
+            } else {
+                assert(market_id <= self.idx.read(), 'Market does not exist');
+                let market = self.markets.read(market_id);
+                assert(market.is_settled == true, 'Market not settled');
+                let user_bet: UserBet = self
+                    .user_bet
+                    .read((get_caller_address(), market_id, market_type));
+                assert(user_bet.position.has_claimed == false, 'User has claimed winnings.');
+                let mut winnings = 0;
+                let winning_outcome = market.winning_outcome.unwrap();
+                assert(user_bet.outcome == winning_outcome, 'User did not win!');
+                winnings = user_bet.position.amount
+                    * market.money_in_pool
+                    / user_bet.outcome.bought_shares;
+                let eth_address = contract_address_const::<
+                    0x053b40a647cedfca6ca84f542a0fe36736031905a9639a7f19a3c1e66bfd5080
+                >();
+                let dispatcher = IERC20Dispatcher { contract_address: eth_address };
+                dispatcher.transfer(get_caller_address(), winnings);
+                self
+                    .user_bet
+                    .write(
+                        (get_caller_address(), market_id, market_type),
+                        UserBet {
+                            outcome: user_bet.outcome,
+                            position: UserPosition {
+                                amount: user_bet.position.amount, has_claimed: true
+                            }
+                        }
+                    );
+                self
+                    .emit(
+                        WinningsClaimed {
+                            user: get_caller_address(),
+                            market: market,
+                            outcome: user_bet.outcome,
+                            amount: winnings
+                        }
+                    );
+            }
         }
 
         fn set_treasury_wallet(ref self: ContractState, wallet: ContractAddress) {
@@ -894,6 +1028,7 @@ pub mod MarketFactory {
 
         fn settle_market(ref self: ContractState, market_id: u256, winning_outcome: u8) {
             assert(get_caller_address() == self.owner.read(), 'Only owner can settle markets.');
+            assert(market_id <= self.idx.read(), 'Market does not exist');
             let mut market = self.markets.read(market_id);
             market.is_settled = true;
             market.is_active = false;
@@ -906,6 +1041,40 @@ pub mod MarketFactory {
             self.markets.write(market_id, market);
             let current_market = self.markets.read(market_id);
             self.emit(MarketSettled { market: current_market });
+        }
+
+        fn settle_crypto_market_manually(ref self: ContractState, market_id: u256, winning_outcome: u8) {
+            assert(get_caller_address() == self.owner.read(), 'Only owner can settle markets.');
+            assert(market_id <= self.crypto_idx.read(), 'Market does not exist');
+            let mut market = self.crypto_markets.read(market_id);
+            market.is_settled = true;
+            market.is_active = false;
+            let (outcome1, outcome2) = market.outcomes;
+            if winning_outcome == 0 {
+                market.winning_outcome = Option::Some(outcome1);
+            } else {
+                market.winning_outcome = Option::Some(outcome2);
+            }
+            self.crypto_markets.write(market_id, market);
+            let current_market = self.crypto_markets.read(market_id);
+            self.emit(CryptoMarketSettled { market: current_market });
+        }
+
+        fn settle_sports_market_manually(ref self: ContractState, market_id: u256, winning_outcome: u8) {
+            assert(get_caller_address() == self.owner.read(), 'Only owner can settle markets.');
+            assert(market_id <= self.sports_idx.read(), 'Market does not exist');
+            let mut market = self.sports_markets.read(market_id);
+            market.is_settled = true;
+            market.is_active = false;
+            let (outcome1, outcome2) = market.outcomes;
+            if winning_outcome == 0 {
+                market.winning_outcome = Option::Some(outcome1);
+            } else {
+                market.winning_outcome = Option::Some(outcome2);
+            }
+            self.sports_markets.write(market_id, market);
+            let current_market = self.sports_markets.read(market_id);
+            self.emit(SportsMarketSettled { market: current_market });
         }
 
         fn get_all_markets(self: @ContractState) -> Array<Market> {
@@ -943,20 +1112,5 @@ pub mod MarketFactory {
         let output: PragmaPricesResponse = oracle_dispatcher
             .get_data(asset, AggregationMode::Median(()));
         return output.price;
-    }
-
-    impl MarketFactoryImpl of super::IMarketFactoryImpl<ContractState> {
-        fn is_market_resolved(self: @ContractState, market_id: u256) -> bool {
-            let market = self.markets.read(market_id);
-            return market.is_settled;
-        }
-
-        fn calc_probabilty(self: @ContractState, market_id: u256, outcome: Outcome) -> u256 {
-            let market = self.markets.read(market_id);
-            let (outcome1, outcome2) = market.outcomes;
-            let total_shares = outcome1.bought_shares + outcome2.bought_shares;
-            let outcome_shares = outcome.bought_shares;
-            return outcome_shares / total_shares;
-        }
     }
 }
