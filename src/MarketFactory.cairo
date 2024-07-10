@@ -119,8 +119,6 @@ pub trait IMarketFactory<TContractState> {
 
     fn settle_sports_market_manually(ref self: TContractState, market_id: u256, winning_outcome: u8);
 
-    fn toggle_market_status(ref self: TContractState, market_id: u256, market_type: u8);
-
     fn claim_winnings(ref self: TContractState, market_id: u256, market_type: u8);
 
     fn get_market(self: @TContractState, market_id: u256) -> Market;
@@ -155,7 +153,7 @@ pub trait IMarketFactory<TContractState> {
 
     fn get_user_total_claimable(self: @TContractState, user: ContractAddress) -> u256;
 
-    fn disable_market(ref self: TContractState, market_id: u256, market_type: u8);
+    fn toggle_market(ref self: TContractState, market_id: u256, market_type: u8);
 
     fn has_user_placed_bet(
         self: @TContractState, user: ContractAddress, market_id: u256, market_type: u8
@@ -524,28 +522,6 @@ pub mod MarketFactory {
             markets
         }
 
-        fn toggle_market_status(ref self: ContractState, market_id: u256, market_type: u8) {
-            if market_type == 0 {
-                let mut market = self.sports_markets.read(market_id);
-                market.is_active = !market.is_active;
-                self.sports_markets.write(market_id, market);
-                let current_market = self.sports_markets.read(market_id);
-                self.emit(SportsMarketToggled { market: current_market })
-            } else if market_type == 1 {
-                let mut market = self.crypto_markets.read(market_id);
-                market.is_active = !market.is_active;
-                self.crypto_markets.write(market_id, market);
-                let current_market = self.crypto_markets.read(market_id);
-                self.emit(CryptoMarketToggled { market: current_market });
-            } else {
-                let mut market = self.markets.read(market_id);
-                market.is_active = !market.is_active;
-                self.markets.write(market_id, market);
-                let current_market = self.markets.read(market_id);
-                self.emit(MarketToggled { market: current_market });
-            }
-        }
-
         fn has_user_placed_bet(
             self: @ContractState, user: ContractAddress, market_id: u256, market_type: u8
         ) -> bool {
@@ -609,7 +585,6 @@ pub mod MarketFactory {
             assert(get_caller_address() == self.owner.read(), 'Only owner can settle markets.');
             assert(market_id <= self.crypto_idx.read(), 'Market does not exist');
             let mut crypto_market = self.crypto_markets.read(market_id);
-            assert(get_block_timestamp() > crypto_market.deadline, 'Market has not expired.');
             let price = get_asset_price_median(DataType::SpotEntry(crypto_market.price_key));
             crypto_market.is_settled = true;
             crypto_market.is_active = false;
@@ -632,23 +607,32 @@ pub mod MarketFactory {
             self.emit(CryptoMarketSettled { market: current_market });
         }
 
-        fn disable_market(ref self: ContractState, market_id: u256, market_type: u8) {
-            assert(get_caller_address() == self.owner.read(), 'Only owner can disable markets.');
+        fn toggle_market(ref self: ContractState, market_id: u256, market_type: u8) {
+            let mut i = 1;
+            loop {
+                if i > self.num_admins.read() {
+                    panic!("Only admins can create markets.");
+                }
+                if self.admins.read(i) == get_caller_address() {
+                    break;
+                }
+                i += 1;
+            };
             if market_type == 0 {
                 let mut market = self.sports_markets.read(market_id);
-                market.is_active = false;
+                market.is_active = !market.is_active;
                 self.sports_markets.write(market_id, market);
                 let current_market = self.sports_markets.read(market_id);
                 self.emit(SportsMarketToggled { market: current_market });
             } else if market_type == 1 {
                 let mut market = self.crypto_markets.read(market_id);
-                market.is_active = false;
+                market.is_active = !market.is_active;
                 self.crypto_markets.write(market_id, market);
                 let current_market = self.crypto_markets.read(market_id);
                 self.emit(CryptoMarketToggled { market: current_market });
             } else {
                 let mut market = self.markets.read(market_id);
-                market.is_active = false;
+                market.is_active = !market.is_active;
                 self.markets.write(market_id, market);
                 let current_market = self.markets.read(market_id);
                 self.emit(MarketToggled { market: current_market });
@@ -709,7 +693,7 @@ pub mod MarketFactory {
             market_type: u8
         ) -> bool {
             let usdc_address = contract_address_const::<
-                0x02f37c3e00e75ee4135b32bb60c37e0599af264076376a618f138d2f9929ac74
+                0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
             >();
             let dispatcher = IERC20Dispatcher { contract_address: usdc_address };
 
@@ -916,7 +900,7 @@ pub mod MarketFactory {
                     * market.money_in_pool
                     / user_bet.outcome.bought_shares;
                 let usdc_address = contract_address_const::<
-                0x02f37c3e00e75ee4135b32bb60c37e0599af264076376a618f138d2f9929ac74
+                0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
                 >();
                 let dispatcher = IERC20Dispatcher { contract_address: usdc_address };
                 dispatcher.transfer(get_caller_address(), winnings);
@@ -955,7 +939,7 @@ pub mod MarketFactory {
                     * market.money_in_pool
                     / user_bet.outcome.bought_shares;
                 let usdc_address = contract_address_const::<
-                0x02f37c3e00e75ee4135b32bb60c37e0599af264076376a618f138d2f9929ac74
+                0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
                 >();
                 let dispatcher = IERC20Dispatcher { contract_address: usdc_address };
                 dispatcher.transfer(get_caller_address(), winnings);
@@ -994,7 +978,7 @@ pub mod MarketFactory {
                     * market.money_in_pool
                     / user_bet.outcome.bought_shares;
                 let usdc_address = contract_address_const::<
-                0x02f37c3e00e75ee4135b32bb60c37e0599af264076376a618f138d2f9929ac74
+                0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
                 >();
                 let dispatcher = IERC20Dispatcher { contract_address: usdc_address };
                 dispatcher.transfer(get_caller_address(), winnings);
@@ -1133,7 +1117,7 @@ pub mod MarketFactory {
 
     fn get_asset_price_median(asset: DataType) -> u128 {
         let oracle_address: ContractAddress = contract_address_const::<
-            0x36031daa264c24520b11d93af622c848b2499b66b41d611bac95e13cfca131a
+        0x2a85bd616f912537c50a49a4076db02c00b29b2cdc8a197ce92ed1837fa875b
         >();
         let oracle_dispatcher = IPragmaABIDispatcher { contract_address: oracle_address };
         let output: PragmaPricesResponse = oracle_dispatcher
