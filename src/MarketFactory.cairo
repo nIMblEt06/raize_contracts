@@ -542,7 +542,8 @@ pub mod MarketFactory {
                             break;
                         }
                         markets.append(self.markets.read(i));
-                    }
+                        bet_num +=1;
+                    };
                 }
                 i += 1;
             };
@@ -566,7 +567,8 @@ pub mod MarketFactory {
                             break;
                         }
                         markets.append(self.crypto_markets.read(i));
-                    }
+                        bet_num +=1;
+                    };
                 }
                 i += 1;
             };
@@ -590,7 +592,8 @@ pub mod MarketFactory {
                             break;
                         }
                         markets.append(self.sports_markets.read(i));
-                    }
+                        bet_num +=1;
+                    };
                 }
                 i += 1;
             };
