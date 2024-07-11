@@ -782,7 +782,7 @@ pub mod MarketFactory {
             market_type: u8
         ) -> bool {
             let usdc_address = contract_address_const::<
-                0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
+                0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7
             >();
             let dispatcher = IERC20Dispatcher { contract_address: usdc_address };
 
@@ -1011,7 +1011,7 @@ pub mod MarketFactory {
                     * market.money_in_pool
                     / user_bet.outcome.bought_shares;
                 let usdc_address = contract_address_const::<
-                    0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
+                    0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7
                 >();
                 let dispatcher = IERC20Dispatcher { contract_address: usdc_address };
                 dispatcher.transfer(get_caller_address(), winnings);
@@ -1054,7 +1054,7 @@ pub mod MarketFactory {
                     * market.money_in_pool
                     / user_bet.outcome.bought_shares;
                 let usdc_address = contract_address_const::<
-                    0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
+                    0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7
                 >();
                 let dispatcher = IERC20Dispatcher { contract_address: usdc_address };
                 dispatcher.transfer(get_caller_address(), winnings);
@@ -1097,7 +1097,7 @@ pub mod MarketFactory {
                     * market.money_in_pool
                     / user_bet.outcome.bought_shares;
                 let usdc_address = contract_address_const::<
-                    0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
+                    0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7
                 >();
                 let dispatcher = IERC20Dispatcher { contract_address: usdc_address };
                 dispatcher.transfer(get_caller_address(), winnings);
