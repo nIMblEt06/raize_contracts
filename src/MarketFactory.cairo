@@ -52,7 +52,7 @@ pub struct SportsMarket {
     is_home: bool,
 }
 
-#[derive(Drop, Copy, Serde, starknet::Store, PartialEq, Eq, Hash)]
+#[derive(Copy, Serde, Drop, starknet::Store, PartialEq, Eq, Hash)]
 pub struct Outcome {
     name: felt252,
     bought_shares: u256,
@@ -115,11 +115,15 @@ pub trait IMarketFactory<TContractState> {
 
     fn settle_market(ref self: TContractState, market_id: u256, winning_outcome: u8);
 
-    fn settle_crypto_market_manually(ref self: TContractState, market_id: u256, winning_outcome: u8);
+    fn settle_crypto_market_manually(
+        ref self: TContractState, market_id: u256, winning_outcome: u8
+    );
 
-    fn settle_sports_market_manually(ref self: TContractState, market_id: u256, winning_outcome: u8);
+    fn settle_sports_market_manually(
+        ref self: TContractState, market_id: u256, winning_outcome: u8
+    );
 
-    fn claim_winnings(ref self: TContractState, market_id: u256, market_type: u8);
+    fn claim_winnings(ref self: TContractState, market_id: u256, market_type: u8, bet_num: u8);
 
     fn get_market(self: @TContractState, market_id: u256) -> Market;
 
@@ -147,17 +151,17 @@ pub trait IMarketFactory<TContractState> {
 
     fn upgrade(ref self: TContractState, new_class_hash: ClassHash);
 
-    fn get_outcome_and_bet(
+    fn get_num_bets_in_market(
         self: @TContractState, user: ContractAddress, market_id: u256, market_type: u8
+    ) -> u8;
+
+    fn get_outcome_and_bet(
+        self: @TContractState, user: ContractAddress, market_id: u256, market_type: u8, bet_num: u8
     ) -> UserBet;
 
     fn get_user_total_claimable(self: @TContractState, user: ContractAddress) -> u256;
 
     fn toggle_market(ref self: TContractState, market_id: u256, market_type: u8);
-
-    fn has_user_placed_bet(
-        self: @TContractState, user: ContractAddress, market_id: u256, market_type: u8
-    ) -> bool;
 
     fn settle_crypto_market(ref self: TContractState, market_id: u256);
 
@@ -192,7 +196,8 @@ pub mod MarketFactory {
 
     #[storage]
     struct Storage {
-        user_bet: LegacyMap::<(ContractAddress, u256, u8), UserBet>,
+        user_bet: LegacyMap::<(ContractAddress, u256, u8, u8), UserBet>,
+        num_bets: LegacyMap::<(ContractAddress, u256, u8), u8>,
         markets: LegacyMap::<u256, Market>,
         crypto_markets: LegacyMap::<u256, CryptoMarket>,
         crypto_idx: u256,
@@ -522,13 +527,6 @@ pub mod MarketFactory {
             markets
         }
 
-        fn has_user_placed_bet(
-            self: @ContractState, user: ContractAddress, market_id: u256, market_type: u8
-        ) -> bool {
-            let user_bet = self.user_bet.read((user, market_id, market_type));
-            return !user_bet.outcome.bought_shares.is_zero();
-        }
-
         fn get_user_markets(self: @ContractState, user: ContractAddress) -> Array<Market> {
             let mut markets: Array<Market> = ArrayTrait::new();
             let mut i: u256 = 1;
@@ -536,9 +534,15 @@ pub mod MarketFactory {
                 if i > self.idx.read() {
                     break;
                 }
-                let user_bet = self.user_bet.read((user, i, 2));
-                if user_bet.outcome.bought_shares > 0 {
-                    markets.append(self.markets.read(i));
+                let total_bets = self.num_bets.read((user, i, 2));
+                if total_bets > 0 {
+                    let mut bet_num = 1;
+                    loop {
+                        if bet_num > total_bets {
+                            break;
+                        }
+                        markets.append(self.markets.read(i));
+                    }
                 }
                 i += 1;
             };
@@ -551,12 +555,18 @@ pub mod MarketFactory {
             let mut markets: Array<CryptoMarket> = ArrayTrait::new();
             let mut i: u256 = 1;
             loop {
-                if i > self.idx.read() {
+                if i > self.crypto_idx.read() {
                     break;
                 }
-                let user_bet = self.user_bet.read((user, i, 1));
-                if user_bet.outcome.bought_shares > 0 {
-                    markets.append(self.crypto_markets.read(i));
+                let total_bets = self.num_bets.read((user, i, 1));
+                if total_bets > 0 {
+                    let mut bet_num = 1;
+                    loop {
+                        if bet_num > total_bets {
+                            break;
+                        }
+                        markets.append(self.crypto_markets.read(i));
+                    }
                 }
                 i += 1;
             };
@@ -569,16 +579,28 @@ pub mod MarketFactory {
             let mut markets: Array<SportsMarket> = ArrayTrait::new();
             let mut i: u256 = 1;
             loop {
-                if i > self.idx.read() {
+                if i > self.sports_idx.read() {
                     break;
                 }
-                let user_bet = self.user_bet.read((user, i, 0));
-                if user_bet.outcome.bought_shares > 0 {
-                    markets.append(self.sports_markets.read(i));
+                let total_bets = self.num_bets.read((user, i, 0));
+                if total_bets > 0 {
+                    let mut bet_num = 1;
+                    loop {
+                        if bet_num > total_bets {
+                            break;
+                        }
+                        markets.append(self.sports_markets.read(i));
+                    }
                 }
                 i += 1;
             };
             markets
+        }
+
+        fn get_num_bets_in_market(
+            self: @ContractState, user: ContractAddress, market_id: u256, market_type: u8
+        ) -> u8 {
+            return self.num_bets.read((user, market_id, market_type));
         }
 
         fn settle_crypto_market(ref self: ContractState, market_id: u256) {
@@ -640,9 +662,13 @@ pub mod MarketFactory {
         }
 
         fn get_outcome_and_bet(
-            self: @ContractState, user: ContractAddress, market_id: u256, market_type: u8
+            self: @ContractState,
+            user: ContractAddress,
+            market_id: u256,
+            market_type: u8,
+            bet_num: u8
         ) -> UserBet {
-            let user_bet = self.user_bet.read((user, market_id, market_type));
+            let user_bet = self.user_bet.read((user, market_id, market_type, bet_num));
             return user_bet;
         }
 
@@ -654,32 +680,95 @@ pub mod MarketFactory {
 
         fn get_user_total_claimable(self: @ContractState, user: ContractAddress) -> u256 {
             let mut total: u256 = 0;
-            let mut market_type: u8 = 0;
+            let mut i: u256 = 1;
             loop {
-                if market_type == 3 {
+                if i > self.idx.read() {
                     break;
                 }
-                let mut i: u256 = 1;
-                loop {
-                    if i > self.idx.read() {
-                        break;
-                    }
-                    let market = self.markets.read(i);
-                    let user_bet = self.user_bet.read((user, i, market_type));
-                    if market.is_settled == false {
-                        i += 1;
-                        continue;
-                    }
-                    if user_bet.outcome == market.winning_outcome.unwrap() {
-                        if user_bet.position.has_claimed == false {
-                            total += user_bet.position.amount
-                                * market.money_in_pool
-                                / user_bet.outcome.bought_shares;
+                let market = self.sports_markets.read(i);
+                if market.is_settled == false {
+                    i += 1;
+                    continue;
+                }
+                let total_bets = self.num_bets.read((user, i, 0));
+
+                if total_bets > 0 {
+                    let mut bet_num = 1;
+                    loop {
+                        if bet_num > total_bets {
+                            break;
+                        }
+                        let user_bet = self.user_bet.read((user, i, 0, bet_num));
+                        if user_bet.outcome == market.winning_outcome.unwrap() {
+                            if user_bet.position.has_claimed == false {
+                                total += user_bet.position.amount
+                                    * market.money_in_pool
+                                    / user_bet.outcome.bought_shares;
+                            }
                         }
                     }
+                }
+                i += 1;
+            };
+            let mut i: u256 = 1;
+            loop {
+                if i > self.idx.read() {
+                    break;
+                }
+                let market = self.crypto_markets.read(i);
+                if market.is_settled == false {
                     i += 1;
-                };
-                market_type += 1;
+                    continue;
+                }
+                let total_bets = self.num_bets.read((user, i, 1));
+
+                if total_bets > 0 {
+                    let mut bet_num = 1;
+                    loop {
+                        if bet_num > total_bets {
+                            break;
+                        }
+                        let user_bet = self.user_bet.read((user, i, 1, bet_num));
+                        if user_bet.outcome == market.winning_outcome.unwrap() {
+                            if user_bet.position.has_claimed == false {
+                                total += user_bet.position.amount
+                                    * market.money_in_pool
+                                    / user_bet.outcome.bought_shares;
+                            }
+                        }
+                    }
+                }
+                i += 1;
+            };
+            let mut i: u256 = 1;
+            loop {
+                if i > self.idx.read() {
+                    break;
+                }
+                let market = self.markets.read(i);
+                if market.is_settled == false {
+                    i += 1;
+                    continue;
+                }
+                let total_bets = self.num_bets.read((user, i, 2));
+
+                if total_bets > 0 {
+                    let mut bet_num = 1;
+                    loop {
+                        if bet_num > total_bets {
+                            break;
+                        }
+                        let user_bet = self.user_bet.read((user, i, 2, bet_num));
+                        if user_bet.outcome == market.winning_outcome.unwrap() {
+                            if user_bet.position.has_claimed == false {
+                                total += user_bet.position.amount
+                                    * market.money_in_pool
+                                    / user_bet.outcome.bought_shares;
+                            }
+                        }
+                    }
+                }
+                i += 1;
             };
             total
         }
@@ -702,12 +791,7 @@ pub mod MarketFactory {
                     let mut market = self.sports_markets.read(market_id);
                     assert(market.is_active, 'Market not active.');
                     assert(get_block_timestamp() < market.deadline, 'Market has expired.');
-
-                    let user_bet = self
-                        .user_bet
-                        .read((get_caller_address(), market_id, market_type));
                     let (mut outcome1, mut outcome2) = market.outcomes;
-                    assert(user_bet.outcome.bought_shares.is_zero(), 'User already has shares');
 
                     let txn: bool = dispatcher
                         .transfer_from(get_caller_address(), get_contract_address(), amount);
@@ -727,9 +811,20 @@ pub mod MarketFactory {
 
                     self.sports_markets.write(market_id, market);
                     self
+                        .num_bets
+                        .write(
+                            (get_caller_address(), market_id, 0),
+                            self.num_bets.read((get_caller_address(), market_id, 0)) + 1
+                        );
+                    self
                         .user_bet
                         .write(
-                            (get_caller_address(), market_id, market_type),
+                            (
+                                get_caller_address(),
+                                market_id,
+                                market_type,
+                                self.num_bets.read((get_caller_address(), market_id, 0))
+                            ),
                             UserBet {
                                 outcome: if token_to_mint == 0 {
                                     outcome1
@@ -759,12 +854,7 @@ pub mod MarketFactory {
                     let mut market = self.crypto_markets.read(market_id);
                     assert(market.is_active, 'Market is not active.');
                     assert(get_block_timestamp() < market.deadline, 'Market has expired.');
-
-                    let user_bet = self
-                        .user_bet
-                        .read((get_caller_address(), market_id, market_type));
                     let (mut outcome1, mut outcome2) = market.outcomes;
-                    assert(user_bet.outcome.bought_shares.is_zero(), 'User already has shares');
 
                     let txn: bool = dispatcher
                         .transfer_from(get_caller_address(), get_contract_address(), amount);
@@ -784,9 +874,20 @@ pub mod MarketFactory {
 
                     self.crypto_markets.write(market_id, market);
                     self
+                        .num_bets
+                        .write(
+                            (get_caller_address(), market_id, 1),
+                            self.num_bets.read((get_caller_address(), market_id, 1)) + 1
+                        );
+                    self
                         .user_bet
                         .write(
-                            (get_caller_address(), market_id, market_type),
+                            (
+                                get_caller_address(),
+                                market_id,
+                                market_type,
+                                self.num_bets.read((get_caller_address(), market_id, 1))
+                            ),
                             UserBet {
                                 outcome: if token_to_mint == 0 {
                                     outcome1
@@ -816,12 +917,7 @@ pub mod MarketFactory {
                     let mut market = self.markets.read(market_id);
                     assert(market.is_active, 'Market is not active.');
                     assert(get_block_timestamp() < market.deadline, 'Market has expired.');
-
-                    let user_bet = self
-                        .user_bet
-                        .read((get_caller_address(), market_id, market_type));
                     let (mut outcome1, mut outcome2) = market.outcomes;
-                    assert(user_bet.outcome.bought_shares.is_zero(), 'User already has shares');
 
                     let txn: bool = dispatcher
                         .transfer_from(get_caller_address(), get_contract_address(), amount);
@@ -841,9 +937,20 @@ pub mod MarketFactory {
 
                     self.markets.write(market_id, market);
                     self
+                        .num_bets
+                        .write(
+                            (get_caller_address(), market_id, 2),
+                            self.num_bets.read((get_caller_address(), market_id, 2)) + 1
+                        );
+                    self
                         .user_bet
                         .write(
-                            (get_caller_address(), market_id, market_type),
+                            (
+                                get_caller_address(),
+                                market_id,
+                                market_type,
+                                self.num_bets.read((get_caller_address(), market_id, 2))
+                            ),
                             UserBet {
                                 outcome: if token_to_mint == 0 {
                                     outcome1
@@ -884,30 +991,34 @@ pub mod MarketFactory {
             return self.treasury_wallet.read();
         }
 
-        fn claim_winnings(ref self: ContractState, market_id: u256, market_type: u8) {
+        fn claim_winnings(ref self: ContractState, market_id: u256, market_type: u8, bet_num: u8) {
             if (market_type == 0) {
                 assert(market_id <= self.sports_idx.read(), 'Market does not exist');
+                let mut winnings = 0;
                 let market = self.sports_markets.read(market_id);
                 assert(market.is_settled == true, 'Market not settled');
+                let total_bets = self.num_bets.read((get_caller_address(), market_id, market_type));
+                if total_bets == 0 {
+                    panic!("User has no bets in this market.");
+                }
                 let user_bet: UserBet = self
                     .user_bet
-                    .read((get_caller_address(), market_id, market_type));
+                    .read((get_caller_address(), market_id, market_type, bet_num));
                 assert(user_bet.position.has_claimed == false, 'User has claimed winnings.');
-                let mut winnings = 0;
                 let winning_outcome = market.winning_outcome.unwrap();
                 assert(user_bet.outcome == winning_outcome, 'User did not win!');
                 winnings = user_bet.position.amount
                     * market.money_in_pool
                     / user_bet.outcome.bought_shares;
                 let usdc_address = contract_address_const::<
-                0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
+                    0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
                 >();
                 let dispatcher = IERC20Dispatcher { contract_address: usdc_address };
                 dispatcher.transfer(get_caller_address(), winnings);
                 self
                     .user_bet
                     .write(
-                        (get_caller_address(), market_id, market_type),
+                        (get_caller_address(), market_id, market_type, bet_num),
                         UserBet {
                             outcome: user_bet.outcome,
                             position: UserPosition {
@@ -928,9 +1039,13 @@ pub mod MarketFactory {
                 assert(market_id <= self.crypto_idx.read(), 'Market does not exist');
                 let market = self.crypto_markets.read(market_id);
                 assert(market.is_settled == true, 'Market not settled');
+                let total_bets = self.num_bets.read((get_caller_address(), market_id, market_type));
+                if total_bets == 0 {
+                    panic!("User has no bets in this market.");
+                }
                 let user_bet: UserBet = self
                     .user_bet
-                    .read((get_caller_address(), market_id, market_type));
+                    .read((get_caller_address(), market_id, market_type, bet_num));
                 assert(user_bet.position.has_claimed == false, 'User has claimed winnings.');
                 let mut winnings = 0;
                 let winning_outcome = market.winning_outcome.unwrap();
@@ -939,14 +1054,14 @@ pub mod MarketFactory {
                     * market.money_in_pool
                     / user_bet.outcome.bought_shares;
                 let usdc_address = contract_address_const::<
-                0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
+                    0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
                 >();
                 let dispatcher = IERC20Dispatcher { contract_address: usdc_address };
                 dispatcher.transfer(get_caller_address(), winnings);
                 self
                     .user_bet
                     .write(
-                        (get_caller_address(), market_id, market_type),
+                        (get_caller_address(), market_id, market_type, bet_num),
                         UserBet {
                             outcome: user_bet.outcome,
                             position: UserPosition {
@@ -967,9 +1082,13 @@ pub mod MarketFactory {
                 assert(market_id <= self.idx.read(), 'Market does not exist');
                 let market = self.markets.read(market_id);
                 assert(market.is_settled == true, 'Market not settled');
+                let total_bets = self.num_bets.read((get_caller_address(), market_id, market_type));
+                if total_bets == 0 {
+                    panic!("User has no bets in this market.");
+                }
                 let user_bet: UserBet = self
                     .user_bet
-                    .read((get_caller_address(), market_id, market_type));
+                    .read((get_caller_address(), market_id, market_type, bet_num));
                 assert(user_bet.position.has_claimed == false, 'User has claimed winnings.');
                 let mut winnings = 0;
                 let winning_outcome = market.winning_outcome.unwrap();
@@ -978,14 +1097,14 @@ pub mod MarketFactory {
                     * market.money_in_pool
                     / user_bet.outcome.bought_shares;
                 let usdc_address = contract_address_const::<
-                0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
+                    0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
                 >();
                 let dispatcher = IERC20Dispatcher { contract_address: usdc_address };
                 dispatcher.transfer(get_caller_address(), winnings);
                 self
                     .user_bet
                     .write(
-                        (get_caller_address(), market_id, market_type),
+                        (get_caller_address(), market_id, market_type, bet_num),
                         UserBet {
                             outcome: user_bet.outcome,
                             position: UserPosition {
@@ -1036,7 +1155,9 @@ pub mod MarketFactory {
             self.emit(MarketSettled { market: current_market });
         }
 
-        fn settle_crypto_market_manually(ref self: ContractState, market_id: u256, winning_outcome: u8) {
+        fn settle_crypto_market_manually(
+            ref self: ContractState, market_id: u256, winning_outcome: u8
+        ) {
             let mut i = 1;
             loop {
                 if i > self.num_admins.read() {
@@ -1062,7 +1183,9 @@ pub mod MarketFactory {
             self.emit(CryptoMarketSettled { market: current_market });
         }
 
-        fn settle_sports_market_manually(ref self: ContractState, market_id: u256, winning_outcome: u8) {
+        fn settle_sports_market_manually(
+            ref self: ContractState, market_id: u256, winning_outcome: u8
+        ) {
             let mut i = 1;
             loop {
                 if i > self.num_admins.read() {
@@ -1117,7 +1240,7 @@ pub mod MarketFactory {
 
     fn get_asset_price_median(asset: DataType) -> u128 {
         let oracle_address: ContractAddress = contract_address_const::<
-        0x2a85bd616f912537c50a49a4076db02c00b29b2cdc8a197ce92ed1837fa875b
+            0x2a85bd616f912537c50a49a4076db02c00b29b2cdc8a197ce92ed1837fa875b
         >();
         let oracle_dispatcher = IPragmaABIDispatcher { contract_address: oracle_address };
         let output: PragmaPricesResponse = oracle_dispatcher
