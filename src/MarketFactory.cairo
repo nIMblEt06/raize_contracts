@@ -536,14 +536,7 @@ pub mod MarketFactory {
                 }
                 let total_bets = self.num_bets.read((user, i, 2));
                 if total_bets > 0 {
-                    let mut bet_num = 1;
-                    loop {
-                        if bet_num > total_bets {
-                            break;
-                        }
-                        markets.append(self.markets.read(i));
-                        bet_num +=1;
-                    };
+                    markets.append(self.markets.read(i));
                 }
                 i += 1;
             };
@@ -561,14 +554,7 @@ pub mod MarketFactory {
                 }
                 let total_bets = self.num_bets.read((user, i, 1));
                 if total_bets > 0 {
-                    let mut bet_num = 1;
-                    loop {
-                        if bet_num > total_bets {
-                            break;
-                        }
-                        markets.append(self.crypto_markets.read(i));
-                        bet_num +=1;
-                    };
+                    markets.append(self.crypto_markets.read(i));
                 }
                 i += 1;
             };
@@ -586,15 +572,8 @@ pub mod MarketFactory {
                 }
                 let total_bets = self.num_bets.read((user, i, 0));
                 if total_bets > 0 {
-                    let mut bet_num = 1;
-                    loop {
-                        if bet_num > total_bets {
-                            break;
-                        }
-                        markets.append(self.sports_markets.read(i));
-                        bet_num +=1;
-                    };
-                }
+                    markets.append(self.sports_markets.read(i));
+                };
                 i += 1;
             };
             markets
