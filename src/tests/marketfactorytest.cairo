@@ -237,17 +237,10 @@ fn shouldLetClaimWinnings() {
             "Trump vs Biden",
             "Will Trump emerge victorious again?",
             ('Yes', 'No'),
-            tokenAddress,
             'Politics',
             "trump.png",
             1818704106
         );
-
-    // let approval = dispatcher.checkForApproval(tokenAddress, 1000);
-    // if approval == false {
-    //     let tx = tokenDispatcher.approve(marketContract, 1000);
-    //     assert(tx == true, 'tx failed!');
-    // }
     stop_cheat_caller_address(marketContract);
     start_cheat_caller_address(tokenAddress, contract_address_const::<1>());
     tokenDispatcher.transfer(contract_address_const::<2>(), 100000);

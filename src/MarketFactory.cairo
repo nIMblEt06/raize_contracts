@@ -688,6 +688,7 @@ pub mod MarketFactory {
                                     / user_bet.outcome.bought_shares;
                             }
                         }
+                        bet_num += 1;
                     }
                 }
                 i += 1;
@@ -718,6 +719,7 @@ pub mod MarketFactory {
                                     / user_bet.outcome.bought_shares;
                             }
                         }
+                        bet_num += 1;
                     }
                 }
                 i += 1;
@@ -748,6 +750,7 @@ pub mod MarketFactory {
                                     / user_bet.outcome.bought_shares;
                             }
                         }
+                        bet_num += 1;
                     }
                 }
                 i += 1;
@@ -763,8 +766,7 @@ pub mod MarketFactory {
             amount: u256,
             market_type: u8
         ) -> bool {
-            let usdc_address = contract_address_const::<
-                0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
+            let usdc_address = contract_address_const::<0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
             >();
             let dispatcher = IERC20Dispatcher { contract_address: usdc_address };
 
@@ -979,21 +981,18 @@ pub mod MarketFactory {
                 let mut winnings = 0;
                 let market = self.sports_markets.read(market_id);
                 assert(market.is_settled == true, 'Market not settled');
-                let total_bets = self.num_bets.read((get_caller_address(), market_id, market_type));
-                if total_bets == 0 {
-                    panic!("User has no bets in this market.");
-                }
                 let user_bet: UserBet = self
                     .user_bet
                     .read((get_caller_address(), market_id, market_type, bet_num));
                 assert(user_bet.position.has_claimed == false, 'User has claimed winnings.');
                 let winning_outcome = market.winning_outcome.unwrap();
-                assert(user_bet.outcome == winning_outcome, 'User did not win!');
+                assert(user_bet.outcome.name == winning_outcome.name, 'User did not win!');
                 winnings = user_bet.position.amount
                     * market.money_in_pool
                     / user_bet.outcome.bought_shares;
                 let usdc_address = contract_address_const::<
-                    0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
+                                    0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
+
                 >();
                 let dispatcher = IERC20Dispatcher { contract_address: usdc_address };
                 dispatcher.transfer(get_caller_address(), winnings);
@@ -1021,22 +1020,19 @@ pub mod MarketFactory {
                 assert(market_id <= self.crypto_idx.read(), 'Market does not exist');
                 let market = self.crypto_markets.read(market_id);
                 assert(market.is_settled == true, 'Market not settled');
-                let total_bets = self.num_bets.read((get_caller_address(), market_id, market_type));
-                if total_bets == 0 {
-                    panic!("User has no bets in this market.");
-                }
                 let user_bet: UserBet = self
                     .user_bet
                     .read((get_caller_address(), market_id, market_type, bet_num));
                 assert(user_bet.position.has_claimed == false, 'User has claimed winnings.');
                 let mut winnings = 0;
                 let winning_outcome = market.winning_outcome.unwrap();
-                assert(user_bet.outcome == winning_outcome, 'User did not win!');
+                assert(user_bet.outcome.name == winning_outcome.name, 'User did not win!');
                 winnings = user_bet.position.amount
                     * market.money_in_pool
                     / user_bet.outcome.bought_shares;
                 let usdc_address = contract_address_const::<
-                    0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
+                                    0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
+
                 >();
                 let dispatcher = IERC20Dispatcher { contract_address: usdc_address };
                 dispatcher.transfer(get_caller_address(), winnings);
@@ -1064,22 +1060,19 @@ pub mod MarketFactory {
                 assert(market_id <= self.idx.read(), 'Market does not exist');
                 let market = self.markets.read(market_id);
                 assert(market.is_settled == true, 'Market not settled');
-                let total_bets = self.num_bets.read((get_caller_address(), market_id, market_type));
-                if total_bets == 0 {
-                    panic!("User has no bets in this market.");
-                }
                 let user_bet: UserBet = self
                     .user_bet
                     .read((get_caller_address(), market_id, market_type, bet_num));
                 assert(user_bet.position.has_claimed == false, 'User has claimed winnings.');
                 let mut winnings = 0;
                 let winning_outcome = market.winning_outcome.unwrap();
-                assert(user_bet.outcome == winning_outcome, 'User did not win!');
+                assert(user_bet.outcome.name == winning_outcome.name, 'User did not win!');
                 winnings = user_bet.position.amount
                     * market.money_in_pool
                     / user_bet.outcome.bought_shares;
                 let usdc_address = contract_address_const::<
-                    0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
+                                    0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
+
                 >();
                 let dispatcher = IERC20Dispatcher { contract_address: usdc_address };
                 dispatcher.transfer(get_caller_address(), winnings);
@@ -1115,7 +1108,7 @@ pub mod MarketFactory {
             let mut i = 1;
             loop {
                 if i > self.num_admins.read() {
-                    panic!("Only admins can create markets.");
+                    panic!("Only admins can settle markets.");
                 }
                 if self.admins.read(i) == get_caller_address() {
                     break;
