@@ -688,6 +688,7 @@ pub mod MarketFactory {
                                     / user_bet.outcome.bought_shares;
                             }
                         }
+                        bet_num += 1;
                     }
                 }
                 i += 1;
@@ -718,6 +719,7 @@ pub mod MarketFactory {
                                     / user_bet.outcome.bought_shares;
                             }
                         }
+                        bet_num += 1;
                     }
                 }
                 i += 1;
@@ -748,6 +750,7 @@ pub mod MarketFactory {
                                     / user_bet.outcome.bought_shares;
                             }
                         }
+                        bet_num += 1;
                     }
                 }
                 i += 1;
@@ -979,10 +982,6 @@ pub mod MarketFactory {
                 let mut winnings = 0;
                 let market = self.sports_markets.read(market_id);
                 assert(market.is_settled == true, 'Market not settled');
-                let total_bets = self.num_bets.read((get_caller_address(), market_id, market_type));
-                if total_bets == 0 {
-                    panic!("User has no bets in this market.");
-                }
                 let user_bet: UserBet = self
                     .user_bet
                     .read((get_caller_address(), market_id, market_type, bet_num));
@@ -1021,10 +1020,6 @@ pub mod MarketFactory {
                 assert(market_id <= self.crypto_idx.read(), 'Market does not exist');
                 let market = self.crypto_markets.read(market_id);
                 assert(market.is_settled == true, 'Market not settled');
-                let total_bets = self.num_bets.read((get_caller_address(), market_id, market_type));
-                if total_bets == 0 {
-                    panic!("User has no bets in this market.");
-                }
                 let user_bet: UserBet = self
                     .user_bet
                     .read((get_caller_address(), market_id, market_type, bet_num));
@@ -1064,10 +1059,6 @@ pub mod MarketFactory {
                 assert(market_id <= self.idx.read(), 'Market does not exist');
                 let market = self.markets.read(market_id);
                 assert(market.is_settled == true, 'Market not settled');
-                let total_bets = self.num_bets.read((get_caller_address(), market_id, market_type));
-                if total_bets == 0 {
-                    panic!("User has no bets in this market.");
-                }
                 let user_bet: UserBet = self
                     .user_bet
                     .read((get_caller_address(), market_id, market_type, bet_num));
@@ -1115,7 +1106,7 @@ pub mod MarketFactory {
             let mut i = 1;
             loop {
                 if i > self.num_admins.read() {
-                    panic!("Only admins can create markets.");
+                    panic!("Only admins can settle markets.");
                 }
                 if self.admins.read(i) == get_caller_address() {
                     break;
