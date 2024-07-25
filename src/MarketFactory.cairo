@@ -119,6 +119,10 @@ pub trait IMarketFactory<TContractState> {
     fn add_admin(ref self: TContractState, admin: ContractAddress);
 
     fn remove_all_markets(ref self: TContractState);
+
+    fn set_platform_fee(ref self: TContractState, fee: u256);
+
+    fn get_platform_fee(self: @TContractState) -> u256;
 }
 
 #[starknet::contract]
@@ -135,7 +139,6 @@ pub mod MarketFactory {
     use pragma_lib::abi::{IPragmaABIDispatcher, IPragmaABIDispatcherTrait};
     use pragma_lib::types::{AggregationMode, DataType, PragmaPricesResponse};
     const one: u256 = 1_000_000_000_000_000_000;
-    const PLATFORM_FEE: u256 = 2;
 
     #[storage]
     struct Storage {
@@ -147,6 +150,7 @@ pub mod MarketFactory {
         treasury_wallet: ContractAddress,
         admins: LegacyMap::<u128, ContractAddress>,
         num_admins: u128,
+        platform_fee: u256
     }
 
     #[event]
@@ -434,6 +438,15 @@ pub mod MarketFactory {
             let current_market = self.markets.read(market_id);
             self.emit(MarketToggled { market: current_market });
         }
+        
+        fn set_platform_fee(ref self: ContractState, fee: u256) {
+            assert(get_caller_address() == self.owner.read(), 'Only owner can set.');
+            self.platform_fee.write(fee);
+        }
+
+        fn get_platform_fee(self: @ContractState) -> u256 {
+            return self.platform_fee.read();
+        }
 
         fn get_outcome_and_bet(
             self: @ContractState, user: ContractAddress, market_id: u256, bet_num: u8
@@ -468,11 +481,11 @@ pub mod MarketFactory {
                             break;
                         }
                         let user_bet = self.user_bet.read((user, i, bet_num));
-                        if user_bet.outcome == market.winning_outcome.unwrap() {
+                        if user_bet.outcome.name == market.winning_outcome.unwrap().name {
                             if user_bet.position.has_claimed == false {
                                 total += user_bet.position.amount
                                     * market.money_in_pool
-                                    / user_bet.outcome.bought_shares;
+                                    / market.winning_outcome.unwrap().bought_shares;
                             }
                         }
                         bet_num += 1;
@@ -498,9 +511,9 @@ pub mod MarketFactory {
 
             let txn: bool = dispatcher
                 .transfer_from(get_caller_address(), get_contract_address(), amount);
-            dispatcher.transfer(self.treasury_wallet.read(), amount * PLATFORM_FEE / 100);
+            dispatcher.transfer(self.treasury_wallet.read(), amount * self.platform_fee.read() / 100);
 
-            let bought_shares = amount - amount * PLATFORM_FEE / 100;
+            let bought_shares = amount - amount * self.platform_fee.read() / 100;
             let money_in_pool = market.money_in_pool + bought_shares;
 
             if token_to_mint == 0 {
@@ -574,7 +587,7 @@ pub mod MarketFactory {
             assert(user_bet.outcome.name == winning_outcome.name, 'User did not win!');
             winnings = user_bet.position.amount
                 * market.money_in_pool
-                / user_bet.outcome.bought_shares;
+                / winning_outcome.bought_shares;
             let usdc_address = contract_address_const::<
             0x053c91253bc9682c04929ca02ed00b3e423f6710d2ee7e0d5ebb06f3ecf368a8
             >();
